@@ -2,7 +2,7 @@ import * as state from "./state.js";
 import * as event from "./event.js";
 import * as WebRtc from "./WebRtc.js";
 import * as change from "./change.js"
-const socket = io("https://infamous-wand-695jvx7x75jfrrrv-3000.app.github.dev/", { transports: ["websocket"] });
+const socket = io("http://localhost:5000", { transports: ["websocket"] });
 //registering event for socketId
 event.registerSocketEvent(socket);
 

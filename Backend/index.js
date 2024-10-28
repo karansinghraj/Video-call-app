@@ -1,140 +1,88 @@
-// External And Internal Modules
-
-const express=require("express");
-const cors=require("cors");
-const http=require("http");
-const {Server}=require("socket.io");
-const app = express();
-app.use(cors())
-// =========== Routers and Models Location =================
-
-
-// const {connection}=require("./Config/db");
-const { UserRouter } = require("./Routes/UserRoute");
-
-
-
+// External and Internal Modules
+const express = require("express");
+const cors = require("cors");
+const http = require("http");
+const path = require("path");
+const { Server } = require("socket.io");
 require("dotenv").config();
 
-const httpServer=http.createServer(app);
+const app = express();
+app.use(cors());
 
+// Routers and Models
+const { UserRouter } = require("./Routes/UserRoute");
 
-// =========== For Testing ===========
+// Create HTTP server and attach Socket.IO
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, { cors: { origin: "*" } });
 
-app.get("/",(req,res)=>{
-    res.send("Hello!!")
-})
+// Serve static files from the 'public' directory
+app.use(express.static(path.join(__dirname, "public")));
 
-// =========== Middleware ===========
+// Middleware
+app.use(express.json());
+app.use("/users", UserRouter);
 
-app.use(express.json())
-app.use('/users',UserRouter)
+// Socket Connection
+let allConnectedUsers = [];
 
+io.on("connection", (socket) => {
+    console.log("New Client Connected!");
+    allConnectedUsers.push(socket.id);
 
-// =========== Socket Connection ===========
+    socket.on("preOffer", (data) => {
+        console.log("Received preOffer", data);
+        const { connection_type, personal_code } = data;
+        const reqUser = allConnectedUsers.find((socketId) => socketId === personal_code);
 
-
-const io=new Server(httpServer);
-
-
-let allConnectedUsers=[];
-
-io.on("connection",(socket)=>{
-    console.log("New Client Connected !!");
-    allConnectedUsers.push(socket.id)
-
-
-    socket.on("preOffer",(data)=>{
-        console.log(data)
-        const {connection_type,personal_code}=data;
-
-        const reqUser=allConnectedUsers.find((socketId)=>{//reqUser is the user which send his code to client 2 to connect
-           return socketId==personal_code;
-        })
-        if(reqUser){
-            const data={
+        if (reqUser) {
+            const data = {
                 connection_type,
-                personal_code:socket.id//id of client 2
-            }
-            io.to(personal_code).emit("preOffers",data)//emit the event to the reqUser
-        }else{
-            const data={
-                preOfferAnswer:"Not_Found"
-            }
-            io.to(socket.id).emit("pre_offer_answer",data)
+                personal_code: socket.id, // ID of client 2
+            };
+            io.to(personal_code).emit("preOffers", data); // Emit to the requested user
+        } else {
+            io.to(socket.id).emit("pre_offer_answer", { preOfferAnswer: "Not_Found" });
         }
-    })
+    });
 
-    socket.on("pre_offer_answer",(data)=>{
-        console.log("pre offer answer came")
-        console.log(data)
+    socket.on("pre_offer_answer", (data) => {
+        const reqUser = allConnectedUsers.find((socketId) => socketId === data.callerSocketId);
+        if (reqUser) {
+            io.to(data.callerSocketId).emit("pre_offer_answer", data); // Emit to the requesting user
+        }
+    });
 
-        const reqUser=allConnectedUsers.find((socketId)=>{//reqUser is the user which send his code to client 2 to connect
-            return socketId==data.callerSocketId;
-         })
-         if(reqUser){
-             io.to(data.callerSocketId).emit("pre_offer_answer",data)//emit the event to the reqUser
-         }
+    socket.on("webRTC_signaling", (data) => {
+        const { connectedUserSocketId } = data;
+        const reqUser = allConnectedUsers.find((socketId) => socketId === connectedUserSocketId);
+        if (reqUser) {
+            io.to(connectedUserSocketId).emit("webRTC_signaling", data);
+        }
+    });
 
-    })
+    socket.on("user_hanged_up", (data) => {
+        const { connectedUserSocketId } = data;
+        const reqUser = allConnectedUsers.find((socketId) => socketId === connectedUserSocketId);
+        if (reqUser) {
+            io.to(connectedUserSocketId).emit("user_hanged_up");
+        }
+    });
 
-    socket.on("webRTC_signaling",(data)=>{
+    socket.on("disconnect", () => {
+        console.log("User Disconnected");
+        allConnectedUsers = allConnectedUsers.filter((disconnectedSocketId) => disconnectedSocketId !== socket.id);
+    });
+});
 
-        const {connectedUserSocketId}=data
-
-        const reqUser=allConnectedUsers.find((socketId)=>{//reqUser is the user which send his code to client 2 to connect
-            return socketId==connectedUserSocketId;
-         })
-         if(reqUser){
-            io.to(connectedUserSocketId).emit("webRTC_signaling",data)
-         }
-
-    })
-
-    socket.on("user_hanged_up",(data)=>{
-        const {connectedUserSocketId}=data
-
-        const reqUser=allConnectedUsers.find((socketId)=>{//reqUser is the user which send his code to client 2 to connect
-            return socketId==connectedUserSocketId;
-         })
-         if(reqUser){
-            io.to(connectedUserSocketId).emit("user_hanged_up")
-         }
-
-    })
-    //console.log(allConnectedUsers);
-    //socket.emit("Welcome","Welcome to live video chat app!!");
-
-    // socket.on("User_Send", (msg) => {
-    //     console.log(msg)
-    //     socket.broadcast.emit("server_send", msg)
-    // })
-
-    socket.on("disconnect",()=>{
-        console.log("User Disconnected !!");
-        userAvaliable=allConnectedUsers.filter((disconnectedSocketId)=>{
-            return disconnectedSocketId!==socket.id;
-        })
-        allConnectedUsers=userAvaliable;
-        //console.log(allConnectedUsers)
-    })
-})
-
-
-
-
-
-// =========== Listening to Server ===========
-
-const port = process.env.port || 3000
-
-httpServer.listen(port,async()=>{
-
+// Listening to Server
+const port = process.env.PORT || 5000;
+httpServer.listen(port, async () => {
     try {
-        // await connection;
-        console.log("Connected to DB")
+        // await connection; // Uncomment if you have a DB connection setup
+        console.log("Connected to DB");
     } catch (error) {
-        console.log("Not able to connected to DB")
+        console.log("Not able to connect to DB");
     }
-    console.log(`Server is running at port ${port}`)
-})
+    console.log(`Server is running at port ${port}`);
+});
