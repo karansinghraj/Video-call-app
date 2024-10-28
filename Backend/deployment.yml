@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: healthetile
+  labels:
+    app: healthetile
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: healthetile
+  template:
+    metadata:
+      labels:
+        app: healthetile
+    spec:
+      containers:
+      - name: healthetile-container
+        image: amithbharadwaj08/healthelite:latest
+        ports:
+        - containerPort: 8080
